@@ -1,0 +1,24 @@
+# Real game-shaped fixture: payout is pure and operates on a Float reel row.
+game SolarFortune {
+    rtp = 0.965
+    tolerance = 0.005
+    reel strip = ["A", "K", "Q"]
+
+    fn payout(row: List[Float]) -> Float {
+        let first = row.first()
+        let last = row.last()
+        let total = row.sum()
+        if total > 0.0 {
+            return first + last + total
+        }
+        return 0.0
+    }
+}
+
+fn main() uses io {
+    let row = [1.25, 2.5, 3.75]
+    print(row.first())
+    print(row.last())
+    print(row.sum())
+    print(SolarFortune.payout(row))
+}

@@ -1,0 +1,12 @@
+game Paying {
+    rtp = 100.0
+    bet = 10
+
+    fn spin(bet: Int) -> Int {
+        bet
+    }
+}
+
+fn main() uses io {
+    print(Paying.spin(10))
+}

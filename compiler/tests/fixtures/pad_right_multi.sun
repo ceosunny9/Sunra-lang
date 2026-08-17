@@ -1,0 +1,13 @@
+# Regression fixture: one untyped function called from multiple positions.
+# `s` is a string/reference, while `n` is used in integer arithmetic.
+fn padRight(s, n) {
+    let width = n + 1
+    return s + " "
+}
+
+fn main() uses io {
+    let s = "hello"
+    let n = 10
+    print(padRight(s, n))
+    print(padRight("world", 4))
+}

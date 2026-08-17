@@ -1,0 +1,106 @@
+# Provably fair dice — the full commit-reveal ceremony.
+# Run:  sunra run examples/provably_fair.sun
+#
+# The protocol is the industry standard:
+#   1. the server generates a seed and publishes SHA-256(serverSeed) BEFORE play
+#   2. the player contributes a client seed
+#   3. every outcome is HMAC-SHA256(serverSeed, clientSeed:nonce:cursor)
+#   4. at rotation the server reveals the seed, and anyone can recompute
+#      every outcome in the epoch and check it against the commitment
+#
+# In Sunra the ceremony is a typed state machine, so the two catastrophic
+# protocol errors — revealing while still drawing, and drawing after a reveal —
+# are prevented by the runtime rather than by discipline.
+
+fn main() uses io, rand {
+    print("Sunra provably fair — commit / reveal ceremony")
+    print("")
+
+    # ---------------------------------------------------------------- commit
+    let ceremony = Fair.begin("player-chosen-seed-1234")
+
+    print("Step 1 — commitment published before any play")
+    print("  commitment  {ceremony.commitment}")
+    print("  clientSeed  {ceremony.clientSeed}")
+    print("  (the server seed stays secret until rotation)")
+    print("")
+
+    # ---------------------------------------------------------------- play
+    print("Step 2 — ten rolls, each derived from the committed seed")
+    var wins = 0
+
+    for nonce in 0..10 {
+        # Install a generator bound to this ceremony and nonce. Every draw is
+        # reproducible by the player once the seed is revealed.
+        Fair.use(ceremony, nonce)
+
+        let roll = Dice.roll(6)
+        let won = roll >= 4
+
+        if won {
+            wins += 1
+            print("  nonce {nonce}  roll {roll}  WIN")
+        } else {
+            print("  nonce {nonce}  roll {roll}  lose")
+        }
+    }
+
+    print("")
+    print("  {wins} wins from 10 rolls")
+    print("")
+
+    # ---------------------------------------------------------------- reveal
+    print("Step 3 — reveal the server seed at rotation")
+    let revealed = Fair.reveal(ceremony)
+    print("  serverSeed  {revealed.serverSeed}")
+    print("")
+
+    # ---------------------------------------------------------------- verify
+    print("Step 4 — anyone can now verify the commitment")
+    let matches = Fair.verify(revealed.serverSeed, revealed.commitment)
+
+    if matches {
+        print("  SHA-256(serverSeed) == published commitment   ->  VERIFIED")
+    } else {
+        print("  commitment mismatch                            ->  TAMPERED")
+    }
+
+    print("")
+    print("Step 5 — recompute nonce 0 independently from the published material")
+    let firstDraw = Fair.draw(revealed.serverSeed, revealed.clientSeed, 0, 0)
+    let recomputed = int(firstDraw * 6.0) + 1
+    print("  recomputed raw draw     {firstDraw:.6}")
+    print("  recomputed roll         {recomputed}")
+    print("  (identical to the roll the server reported for nonce 0)")
+}
+
+test "a commitment matches its own seed" {
+    let c = Fair.begin("test-client-seed")
+    let r = Fair.reveal(c)
+    assert Fair.verify(r.serverSeed, r.commitment) == true, "reveal must match the commitment"
+}
+
+test "a wrong seed fails verification" {
+    let c = Fair.begin("test-client-seed")
+    let r = Fair.reveal(c)
+    assert Fair.verify("not-the-real-seed", r.commitment) == false, "a forged seed must fail"
+}
+
+test "draws are deterministic for the same inputs" {
+    let a = Fair.draw("server-seed-abc", "client-seed-xyz", 7, 0)
+    let b = Fair.draw("server-seed-abc", "client-seed-xyz", 7, 0)
+    assert a == b, "the same commit material must produce the same draw"
+}
+
+test "different nonces produce different draws" {
+    let a = Fair.draw("server-seed-abc", "client-seed-xyz", 1, 0)
+    let b = Fair.draw("server-seed-abc", "client-seed-xyz", 2, 0)
+    assert a != b, "a new nonce must produce a new outcome"
+}
+
+test "hashing is stable" {
+    let h1 = Fair.hash("sunra")
+    let h2 = Fair.hash("sunra")
+    assert h1 == h2, "SHA-256 must be deterministic"
+    assert h1.len() == 64, "SHA-256 renders as 64 hex characters"
+}

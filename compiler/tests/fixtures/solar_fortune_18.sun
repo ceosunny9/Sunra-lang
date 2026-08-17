@@ -1,0 +1,32 @@
+# Regression fixture: a Solar Fortune-shaped game with 17 untyped aggregate
+# helpers plus main. It stands in for the unavailable external 18-function
+# artifact while exercising the same Unknown -> ptr backend boundary.
+game SolarFortune {
+    reel strip = ["SUN", "MOON", "STAR"]
+    reel weights = [1.0, 1.0, 1.0]
+
+    fn symbolAt(grid, index) { return grid[index] }
+    fn first(grid) { return grid[0] }
+    fn second(grid) { return grid[1] }
+    fn same(grid, sym) { return grid[0] == sym }
+    fn hasSun(grid) { return grid[0] == "SUN" }
+    fn hasMoon(grid) { return grid[0] == "MOON" }
+    fn hasStar(grid) { return grid[0] == "STAR" }
+    fn label(grid) { return grid[0] }
+    fn choose(grid, flag) {
+        if flag { return grid[0] }
+        return grid[1]
+    }
+    fn mirror(grid) { return [grid[1], grid[0]] }
+    fn pair(grid) { return [grid[0], grid[0]] }
+    fn triple(grid) { return [grid[0], grid[1], grid[2]] }
+    fn head(grid) { return grid[0] }
+    fn tail(grid) { return [grid[1], grid[2]] }
+    fn firstEqualsSecond(grid) { return grid[0] == grid[1] }
+    fn firstEqualsThird(grid) { return grid[0] == grid[2] }
+    fn rotate(grid) { return [grid[1], grid[2], grid[0]] }
+}
+
+fn main() uses io {
+    print("Solar Fortune 18-function fixture")
+}

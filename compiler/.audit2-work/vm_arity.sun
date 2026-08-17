@@ -1,0 +1,25 @@
+fn addup(a: Int, b: Int) -> Int {
+    a + b + 4
+}
+
+fn ratio(a: Float, b: Float) -> Float {
+    if b > 0.0 {
+        a / b
+    } else {
+        0.0
+    }
+}
+
+fn label(n: Int) -> Str {
+    if n > 1 {
+        "many"
+    } else {
+        "one"
+    }
+}
+
+fn main() uses io {
+    print(addup(3, 4))
+    print(ratio(3.0, 4.0))
+    print(label(5))
+}

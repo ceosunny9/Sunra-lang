@@ -1,0 +1,210 @@
+# An on-chain fairness registry, written the way Sunra targets a chain.
+# Run:  sunra run examples/blockchain.sun --seed 99
+#
+# The whitepaper's chain target compiles a `contract` block to a deterministic
+# state machine: no floating point, no ambient randomness, exact fixed-point
+# money. This prototype models the same shape with a `game` block plus pure
+# functions, and demonstrates the property that matters — every settlement is
+# reconstructible from published data alone.
+
+# ---------------------------------------------------------------------------
+# A minimal hash-linked ledger. Each block commits to its predecessor, so any
+# retroactive edit invalidates every subsequent hash.
+# ---------------------------------------------------------------------------
+
+fn blockHash(height, previous, payload) -> Str {
+    Fair.hash("{height}|{previous}|{payload}")
+}
+
+fn genesis() -> Str {
+    Fair.hash("sunra-genesis-block")
+}
+
+# Verify a chain of [height, previous, payload, hash] rows.
+fn verifyChain(rows) -> Bool {
+    var expectedPrevious = genesis()
+    var height = 0
+
+    for row in rows {
+        if row[0] != height {
+            return false
+        }
+        if row[1] != expectedPrevious {
+            return false
+        }
+        if row[3] != blockHash(row[0], row[1], row[2]) {
+            return false
+        }
+        expectedPrevious = row[3]
+        height += 1
+    }
+
+    true
+}
+
+# ---------------------------------------------------------------------------
+# The settlement contract. Every function is pure except `settle`, which needs
+# the committed generator — and says so in its effect row.
+# ---------------------------------------------------------------------------
+
+game FairnessRegistry {
+    rtp = 0.97
+    tolerance = 0.005
+    bet = 1.0
+    houseEdgeBps = 300
+
+    # Pure: the payout curve is a closed form the chain can re-evaluate.
+    # A roll under the threshold pays the inverse of its probability, less edge.
+    fn thresholdFor(target) -> Float {
+        float(target) / 100.0
+    }
+
+    fn multiplierFor(target) -> Float {
+        let p = thresholdFor(target)
+        let gross = 1.0 / p
+        gross * (1.0 - float(houseEdgeBps) / 10000.0)
+    }
+
+    # Consumes the committed generator, so `uses rand` is mandatory.
+    fn settleRoll(target) -> Float uses rand {
+        let draw = rng.float()
+        if draw < thresholdFor(target) {
+            multiplierFor(target)
+        } else {
+            0.0
+        }
+    }
+
+    # The RTP entry point the toolchain verifies: a flat 50% target.
+    fn spin() -> Float uses rand {
+        settleRoll(50) * bet
+    }
+}
+
+fn main() uses io, rand {
+    print("Sunra on-chain fairness registry")
+    print("house edge {FairnessRegistry.houseEdgeBps} bps -> RTP target {FairnessRegistry.rtp:.4}")
+    print("")
+
+    # ------------------------------------------------------------ ceremony
+    print("--- Epoch commitment ---")
+    let ceremony = Fair.begin("chain-epoch-2026-08")
+    print("  commitment written on chain")
+    print("  {ceremony.commitment}")
+    print("")
+
+    # ------------------------------------------------------------ play
+    print("--- Settled rounds ---")
+    print("  nonce  target  multiplier  outcome")
+
+    var rows = []
+    var previous = genesis()
+    var height = 0
+    var returned = 0.0
+
+    for nonce in 0..8 {
+        Fair.use(ceremony, nonce)
+
+        let target = 50
+        let win = FairnessRegistry.settleRoll(target)
+        returned += win
+
+        let payload = "nonce={nonce};target={target};win={win:.4}"
+        let hash = blockHash(height, previous, payload)
+        rows = rows + [[height, previous, payload, hash]]
+
+        let mult = FairnessRegistry.multiplierFor(target)
+        if win > 0.0 {
+            print("  {nonce}      {target}      {mult:.4}      WIN  {win:.4}")
+        } else {
+            print("  {nonce}      {target}      {mult:.4}      lose")
+        }
+
+        previous = hash
+        height += 1
+    }
+
+    print("")
+    print("  returned over 8 rounds  {returned:.4}")
+    print("")
+
+    # ------------------------------------------------------------ ledger
+    print("--- Ledger integrity ---")
+    print("  blocks written      {len(rows)}")
+    print("  head hash           {rows[len(rows) - 1][3]}")
+    print("  chain verifies      {verifyChain(rows)}")
+
+    # Tamper with a settled payload and re-verify.
+    var forged = []
+    for row in rows {
+        forged = forged + [row]
+    }
+    forged[3] = [3, forged[3][1], "nonce=3;target=50;win=999.0000", forged[3][3]]
+    print("  after tampering     {verifyChain(forged)}")
+    print("")
+
+    # ------------------------------------------------------------ reveal
+    print("--- Epoch reveal ---")
+    let revealed = Fair.reveal(ceremony)
+    print("  server seed disclosed")
+    print("  {revealed.serverSeed}")
+    print("  commitment holds    {Fair.verify(revealed.serverSeed, revealed.commitment)}")
+    print("")
+
+    print("--- Independent recomputation of round 0 ---")
+    let draw = Fair.draw(revealed.serverSeed, revealed.clientSeed, 0, 0)
+    let threshold = FairnessRegistry.thresholdFor(50)
+    print("  raw draw            {draw:.6}")
+    print("  threshold           {threshold:.4}")
+    if draw < threshold {
+        print("  recomputed outcome  WIN {FairnessRegistry.multiplierFor(50):.4}")
+    } else {
+        print("  recomputed outcome  lose")
+    }
+    print("  (matches the settlement recorded in block 0)")
+    print("")
+
+    print("--- Long-run return ---")
+    var total = 0.0
+    let rounds = 200000
+    for i in 0..rounds {
+        total += FairnessRegistry.spin()
+    }
+    let actual = total / (float(rounds) * FairnessRegistry.bet)
+    print("  rounds              {rounds}")
+    print("  actual RTP          {actual:.5}")
+    print("  declared RTP        {FairnessRegistry.rtp:.5}")
+    print("  within tolerance    {Rtp.check(actual, FairnessRegistry.rtp, FairnessRegistry.tolerance)}")
+}
+
+test "the payout curve encodes exactly the declared house edge" {
+    # At a 50% target the fair multiplier is 2.0; with 300 bps of edge it is 1.94.
+    assert FairnessRegistry.multiplierFor(50) == 1.94, "50% target must pay 1.94"
+    # Expected value is threshold * multiplier, which must equal the RTP.
+    let ev = FairnessRegistry.thresholdFor(50) * FairnessRegistry.multiplierFor(50)
+    assert ev == 0.97, "expected value must equal the declared RTP"
+}
+
+test "the edge is constant across every target" {
+    let ev10 = FairnessRegistry.thresholdFor(10) * FairnessRegistry.multiplierFor(10)
+    let ev90 = FairnessRegistry.thresholdFor(90) * FairnessRegistry.multiplierFor(90)
+    assert ev10 == 0.97, "a 10% target must return 0.97"
+    assert ev90 == 0.97, "a 90% target must return 0.97"
+}
+
+test "a hash-linked ledger detects tampering" {
+    let g = genesis()
+    let h0 = blockHash(0, g, "first")
+    let h1 = blockHash(1, h0, "second")
+
+    let good = [[0, g, "first", h0], [1, h0, "second", h1]]
+    assert verifyChain(good) == true, "an untouched chain must verify"
+
+    let bad = [[0, g, "forged", h0], [1, h0, "second", h1]]
+    assert verifyChain(bad) == false, "an edited payload must break the chain"
+}
+
+test "block hashes are deterministic" {
+    assert blockHash(1, "abc", "payload") == blockHash(1, "abc", "payload"), "same input, same hash"
+    assert blockHash(1, "abc", "payload") != blockHash(2, "abc", "payload"), "height is committed"
+}

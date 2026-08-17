@@ -1,0 +1,16 @@
+# Regression: scalar constants declared in a game block must stay scalar in LLVM.
+game SolarFortune {
+    minCluster = 10
+
+    fn payout(sym: Str, n: Int) -> Float {
+        if n < minCluster {
+            return 0.0
+        }
+        return 1.0
+    }
+}
+
+fn main() uses io {
+    print(SolarFortune.payout("A", 10))
+    print(SolarFortune.payout("A", 3))
+}

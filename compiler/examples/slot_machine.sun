@@ -1,0 +1,116 @@
+# A three-reel slot machine — the canonical Sunra example.
+# Run:          sunra run examples/slot_machine.sun --seed 42
+# Verify RTP:   sunra rtp examples/slot_machine.sun --rounds 500000
+# Effects:      sunra effects examples/slot_machine.sun
+#
+# The paytable below was solved so that the mathematical return is 96.5008%,
+# which is what `sunra rtp` independently confirms by simulation.
+
+game SlotMachine {
+    # Declarative fields. `rtp` is the obligation the toolchain verifies.
+    rtp = 0.965
+    tolerance = 0.005
+    bet = 1.0
+
+    # A reel strip with per-symbol weights. Rarer symbols pay more.
+    reel strip = ["CHERRY", "LEMON", "BELL", "STAR", "DIAMOND", "SEVEN"]
+    reel weights = [30.0, 26.0, 18.0, 12.0, 8.0, 6.0]
+
+    # Pure: the paytable is a function of the drawn row alone. It declares no
+    # effects, so the compiler knows it cannot consult the random source — which
+    # is what makes it exhaustively verifiable.
+    fn payout(row) -> Float {
+        let first = row[0]
+
+        if Reel.isMatch(row) {
+            return match first {
+                "SEVEN"   -> 180.0
+                "DIAMOND" -> 120.0
+                "STAR"    -> 50.0
+                "BELL"    -> 20.0
+                "LEMON"   -> 10.0
+                "CHERRY"  -> 5.0
+                _         -> 0.0
+            }
+        }
+
+        # Two leading symbols of a kind pay a small consolation prize.
+        if Reel.longestRun(row) == 2 {
+            return match first {
+                "SEVEN"   -> 5.0
+                "DIAMOND" -> 5.0
+                _         -> 2.0
+            }
+        }
+
+        0.0
+    }
+
+    # Consumes randomness, so it must declare `uses rand`.
+    # Removing that annotation is a compile error (E0615).
+    fn spin() -> Float uses rand {
+        let row = Reel.spin(Reel.of(strip, weights), 3)
+        payout(row) * bet
+    }
+
+    # A spin that also reports what it drew, for display purposes.
+    fn spinVerbose() uses rand, io {
+        let row = Reel.spin(Reel.of(strip, weights), 3)
+        let win = payout(row) * bet
+        let label = row.join(" | ")
+
+        if win > 0.0 {
+            print("  [{label}]  win {win:.2}")
+        } else {
+            print("  [{label}]  --")
+        }
+    }
+}
+
+fn main() uses io, rand {
+    print("Sunra slot machine — SolarFortune prototype")
+    print("RTP target {SlotMachine.rtp:.4}   tolerance {SlotMachine.tolerance:.4}")
+    print("")
+
+    print("Twelve spins:")
+    for i in 0..12 {
+        SlotMachine.spinVerbose()
+    }
+
+    print("")
+    print("Simulating 200,000 rounds:")
+    var total = 0.0
+    var hits = 0
+    var biggest = 0.0
+    let rounds = 200000
+
+    for i in 0..rounds {
+        let win = SlotMachine.spin()
+        total += win
+        if win > 0.0 {
+            hits += 1
+        }
+        if win > biggest {
+            biggest = win
+        }
+    }
+
+    let staked = float(rounds) * SlotMachine.bet
+    let actual = total / staked
+    let hitRate = float(hits) / float(rounds)
+
+    print("  rounds       {rounds}")
+    print("  staked       {staked:.2}")
+    print("  returned     {total:.2}")
+    print("  actual RTP   {actual:.5}")
+    print("  hit rate     {hitRate:.5}")
+    print("  biggest win  {biggest:.2}")
+
+    # The prototype's stand-in for the compile-time RTP obligation.
+    let ok = Rtp.check(actual, SlotMachine.rtp, SlotMachine.tolerance)
+    if ok {
+        print("  verdict      PASS — within {SlotMachine.tolerance:.4} of the declared target")
+    } else {
+        print("  verdict      FAIL — the weight table does not deliver the declared RTP")
+    }
+}

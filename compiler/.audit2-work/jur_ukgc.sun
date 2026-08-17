@@ -1,0 +1,12 @@
+game Table {
+    rtp = 96.0
+    jurisdiction = ["UKGC"]
+
+    fn spin(bet: Int) -> Int {
+        bet
+    }
+}
+
+fn main() uses io {
+    print(Table.spin(1))
+}

@@ -1,0 +1,12 @@
+game LowPay {
+    rtp = 96.5
+    bet = 10
+
+    fn spin(bet: Int) -> Int {
+        5
+    }
+}
+
+fn main() uses io {
+    print(LowPay.spin(10))
+}

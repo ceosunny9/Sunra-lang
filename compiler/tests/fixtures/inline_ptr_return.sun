@@ -1,0 +1,32 @@
+# Inlining a pointer-returning helper used to emit `add ptr` in LLVM and trap
+# the VM with "expected a number, got object". The reference result must be
+# bound by aliasing, not by an identity add.
+fn base() -> Float {
+    return 1.5
+}
+
+fn extra() -> Float {
+    return 2.5
+}
+
+fn grid() -> List[Int] {
+    return [1, 2, 3]
+}
+
+fn label() -> Str {
+    return "solar"
+}
+
+fn f() -> Float {
+    var w = base()
+    w += extra()
+    let g = grid()
+    let name = label()
+    return w + g.len().toFloat() + name.len().toFloat()
+}
+
+fn main() uses io {
+    print(f())
+    print(grid().len())
+    print(label())
+}

@@ -1,0 +1,30 @@
+# Dependencies and generated output
+node_modules/
+dist/
+dist-browser/
+coverage/
+*.tsbuildinfo
+
+# Packages and archives
+*.tar.gz
+*.tgz
+*.zip
+
+# Build and runtime artifacts
+*.bc
+*.ll
+*.sunbc
+*.wasm
+rtp-report.json
+
+# Logs and local configuration
+*.log
+.env
+.env.*
+!.env.example
+
+# OS and editor metadata
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

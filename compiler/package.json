@@ -1,0 +1,50 @@
+{
+  "name": "sunra-lang",
+  "version": "0.1.0",
+  "description": "Sunra programming language — reference prototype (lexer, parser, type checker, interpreter) for the SuncoreAI ecosystem",
+  "type": "module",
+  "bin": {
+    "sunra": "./bin/sunra.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "sunra": "node bin/sunra.js",
+    "test": "node bin/sunra.js test",
+    "regression": "pnpm build && node tests/regression.mjs",
+    "test:enforcement": "node tests/enforcement.test.mjs",
+    "test:audit": "node tests/audit2.test.mjs",
+    "test:llvm": "node tests/llvm_ptr_mapping.test.mjs && node tests/llvm_unknown.test.mjs && node tests/len_method.test.mjs && node tests/game_field_constants.test.mjs && node tests/float_list_llvm.test.mjs",
+    "test:game-fields": "node tests/game_field_constants.test.mjs",
+    "test:float-list": "node tests/float_list_llvm.test.mjs",
+    "test:unsupported-methods": "node tests/unsupported_methods.test.mjs",
+    "test:gauntlet": "node tests/method_gauntlet.test.mjs",
+    "test:overflow": "node tests/overflow.test.mjs",
+    "test:backends": "node tests/backend_native.test.mjs && node tests/backend_vm.test.mjs",
+    "test:all": "npm run build && npm run test:llvm && npm run test:unsupported-methods && npm run test:gauntlet && npm run test:overflow && npm run test:backends && npm run test:enforcement && npm run test:audit && node tests/regression.mjs",
+    "backend:summary": "node tests/tools/backend_summary.mjs examples/*.sun tests/fixtures/*.sun",
+    "test:deep": "node tests/deep_runtime_repro.test.mjs",
+    "prepare": "tsc -p tsconfig.json",
+    "build:browser": "node scripts/build-browser.mjs",
+    "test:shim": "node tests/browser_shim.test.mjs"
+  },
+  "keywords": [
+    "sunra",
+    "programming-language",
+    "compiler",
+    "interpreter",
+    "gaming",
+    "provably-fair",
+    "rtp",
+    "suncoreai"
+  ],
+  "author": "SuncoreAI",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

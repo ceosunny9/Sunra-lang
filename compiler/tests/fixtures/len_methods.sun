@@ -1,0 +1,14 @@
+fn listLength(xs) {
+    return xs.len()
+}
+
+fn stringLength(s) {
+    return s.len()
+}
+
+fn main() uses io {
+    let xs = [10, 20, 30]
+    let s = "Solar"
+    print(listLength(xs))
+    print(stringLength(s))
+}

@@ -1,0 +1,94 @@
+# Numeric core intended for the WebAssembly target: paytable and RTP mathematics
+# with no strings, lists or effects, so every function compiles to WASM.
+#
+#   sunra build examples/wasm_math.sun --target wasm
+#   sunra run   examples/wasm_math.sun
+
+# The operator's share of every unit staked.
+fn houseEdge(rtp) -> Float {
+    1.0 - rtp
+}
+
+# A three-of-a-kind paytable expressed numerically: symbols are ranked 0..5.
+fn payout(symbol, matches) -> Float {
+    if matches < 3 {
+        return 0.0
+    }
+    if symbol == 5 {
+        180.0
+    } else {
+        if symbol == 4 {
+            120.0
+        } else {
+            if symbol == 3 {
+                40.0
+            } else {
+                8.0
+            }
+        }
+    }
+}
+
+# Contribution of one outcome to the return to player.
+fn contribution(probability, win, bet) -> Float {
+    if bet <= 0.0 {
+        return 0.0
+    }
+    probability * win / bet
+}
+
+# Probability that a single weighted symbol lands, given the strip weight and
+# the total weight of the strip.
+fn symbolChance(weight, total) -> Float {
+    if total <= 0.0 {
+        return 0.0
+    }
+    weight / total
+}
+
+# Probability of the same symbol on all three reels.
+fn tripleChance(weight, total) -> Float {
+    let p = symbolChance(weight, total)
+    p * p * p
+}
+
+# Exact RTP of a three-reel game with a uniform strip of `distinct` symbols,
+# summed over the paytable rather than simulated.
+fn exactRtp(total, bet) -> Float {
+    var sum = 0.0
+    var symbol = 0
+    while symbol < 6 {
+        let chance = tripleChance(1.0, total)
+        sum = sum + contribution(chance, payout(symbol, 3), bet)
+        symbol += 1
+    }
+    sum
+}
+
+# Compound growth, the shape of a progressive jackpot contribution.
+fn compound(base, rate, periods) -> Float {
+    var value = base
+    var i = 0
+    while i < periods {
+        value = value + value * rate
+        i += 1
+    }
+    value
+}
+
+# Standard deviation of a two-outcome bet, the volatility auditors ask about.
+fn twoOutcomeVolatility(p, win, bet) -> Float {
+    let mean = p * win / bet
+    let a = p * (win / bet - mean) * (win / bet - mean)
+    let b = (1.0 - p) * (0.0 - mean) * (0.0 - mean)
+    sqrt(a + b)
+}
+
+fn main() uses io {
+    let total = 6.0
+    print("house edge at 96.5% RTP   {houseEdge(0.965)}")
+    print("triple chance (uniform)   {tripleChance(1.0, total)}")
+    print("exact RTP, 1.0 bet        {exactRtp(total, 1.0)}")
+    print("jackpot after 12 periods  {compound(1000.0, 0.02, 12)}")
+    print("volatility of a 20x bet   {twoOutcomeVolatility(0.04, 20.0, 1.0)}")
+}

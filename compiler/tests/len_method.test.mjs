@@ -1,0 +1,42 @@
+import assert from "node:assert/strict";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const HERE = fileURLToPath(new URL(".", import.meta.url));
+const ROOT = join(HERE, "..");
+const fixture = join(HERE, "fixtures", "len_methods.sun");
+const source = readFileSync(fixture, "utf8");
+const { runPipeline } = await import(join(ROOT, "dist", "pipeline", "pipeline.js"));
+const { emitLlvm } = await import(join(ROOT, "dist", "backend", "llvm.js"));
+const { inferOwnership } = await import(join(ROOT, "dist", "own", "ownership.js"));
+const { buildMir } = await import(join(ROOT, "dist", "mir", "build.js"));
+const { compileToSunVm } = await import(join(ROOT, "dist", "backend", "sunvm.js"));
+const { SunVmRuntime } = await import(join(ROOT, "dist", "backend", "sunvm_run.js"));
+const { tokenize } = await import(join(ROOT, "dist", "lexer", "lexer.js"));
+const { parse } = await import(join(ROOT, "dist", "parser", "parser.js"));
+const { lowerToHir } = await import(join(ROOT, "dist", "hir", "lower.js"));
+
+const result = runPipeline(source, fixture, { native: false });
+assert.equal(result.diagnostics.errors.length, 0, JSON.stringify(result.diagnostics.errors));
+const llvm = emitLlvm(result.optimized, { file: fixture });
+assert.match(llvm.ir, /declare i64 @__sunra_len\(ptr\)/);
+assert.match(llvm.ir, /call i64 @__sunra_len\(ptr %v\d+\)/);
+const irPath = "/tmp/sunra-len-methods.ll";
+const bcPath = "/tmp/sunra-len-methods.bc";
+writeFileSync(irPath, llvm.ir);
+const llvmAs = ["llvm-as-18", "llvm-as-17", "llvm-as"].find((candidate) => spawnSync(candidate, ["--version"], { stdio: "ignore" }).status === 0);
+assert.ok(llvmAs, "llvm-as is required for len method regression");
+const assembled = spawnSync(llvmAs, [irPath, "-o", bcPath], { encoding: "utf8" });
+assert.equal(assembled.status, 0, `${llvmAs} rejected len method IR:\n${assembled.stderr}\n${llvm.ir}`);
+
+const program = parse(tokenize(source, fixture));
+const module = buildMir(lowerToHir(program, fixture), inferOwnership(lowerToHir(program, fixture)));
+const vm = compileToSunVm(module);
+assert.deepEqual(vm.rejected, []);
+const runtime = new SunVmRuntime();
+runtime.load(vm.bytes);
+const run = runtime.run("main");
+assert.deepEqual(run.output, ["3", "5"]);
+console.log(`len methods passed: LLVM ${llvm.functions.length} functions; SunVM output ${run.output.join(", ")}`);

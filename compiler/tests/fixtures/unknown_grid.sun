@@ -1,0 +1,13 @@
+# Untyped aggregate/reference parameters must still lower to LLVM ptr.
+fn countInGrid(grid, sym) {
+    let first = grid[0]
+    if first == sym {
+        return 1
+    }
+    return 0
+}
+
+fn main() uses io {
+    let grid = ["SUN", "MOON"]
+    print(countInGrid(grid, "SUN"))
+}

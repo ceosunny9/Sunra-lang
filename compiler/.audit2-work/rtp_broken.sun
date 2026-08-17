@@ -1,0 +1,12 @@
+game Broken {
+    rtp = 96.0
+
+    fn spin(bet: Int) -> Int {
+        let xs = [1, 2, 3]
+        xs[bet]
+    }
+}
+
+fn main() uses io {
+    print(Broken.spin(1))
+}

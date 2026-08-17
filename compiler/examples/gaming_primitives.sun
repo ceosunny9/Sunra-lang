@@ -1,0 +1,140 @@
+# A tour of every built-in gaming primitive in Sunra.
+# Run:  sunra run examples/gaming_primitives.sun --seed 2026
+
+fn main() uses io, rand {
+    print("=========================================")
+    print(" Sunra gaming primitives")
+    print("=========================================")
+    print("")
+
+    section("1. Randomness is a typed effect")
+    print("  generator kind      {rng.kind()}")
+    print("  rng.float()         {rng.float():.6}")
+    print("  rng.int(1, 100)     {rng.int(1, 100)}")
+    print("  rng.bool()          {rng.bool()}")
+    print("  rng.chance(0.25)    {rng.chance(0.25)}")
+    print("  draws consumed      {rng.draws()}")
+    print("")
+
+    section("2. Reels, strips and weighted symbol tables")
+    let symbols = ["CHERRY", "BELL", "STAR", "SEVEN"]
+    let weights = [40.0, 30.0, 20.0, 10.0]
+    let strip = Reel.of(symbols, weights)
+
+    print("  strip length        {strip.length}")
+    print("  one spin of 3       {Reel.spin(strip, 3)}")
+    print("  one spin of 5       {Reel.spin(strip, 5)}")
+
+    let row = Reel.spin(strip, 3)
+    print("  drawn row           {row}")
+    print("  all three match     {Reel.isMatch(row)}")
+    print("  leading run length  {Reel.longestRun(row)}")
+    print("  SEVEN count         {Reel.count(row, \"SEVEN\")}")
+
+    let grid = Reel.grid(strip, 5, 3)
+    print("  5x3 grid            {grid}")
+    print("")
+
+    section("3. Weighted selection converges on its distribution")
+    var sevens = 0
+    let draws = 100000
+    for i in 0..draws {
+        if rng.weighted(symbols, weights) == "SEVEN" {
+            sevens += 1
+        }
+    }
+    let observed = float(sevens) / float(draws)
+    print("  P(SEVEN) declared   0.1000")
+    print("  P(SEVEN) observed   {observed:.4}")
+    print("")
+
+    section("4. Cards, decks and shoes")
+    let deck = Deck.standard(1)
+    print("  single deck size    {Deck.size(deck)}")
+    print("  eight-deck shoe     {Deck.size(Deck.shuffled(8))}")
+
+    let shuffled = Deck.shuffled(1)
+    let dealt = Deck.deal(shuffled, 5)
+    print("  five dealt cards    {labels(dealt.hand)}")
+    print("  cards remaining     {Deck.size(dealt.rest)}")
+    print("")
+
+    section("5. Poker hand evaluation is pure")
+    let royal = [
+        Card.of("10", "S"), Card.of("J", "S"), Card.of("Q", "S"),
+        Card.of("K", "S"), Card.of("A", "S")
+    ]
+    let ranked = Poker.rank(royal)
+    print("  hand                {labels(royal)}")
+    print("  rank                {ranked.name} (score {ranked.score})")
+
+    let boat = [
+        Card.of("8", "S"), Card.of("8", "H"), Card.of("8", "D"),
+        Card.of("K", "S"), Card.of("K", "H")
+    ]
+    print("  hand                {labels(boat)}")
+    print("  rank                {Poker.rank(boat).name}")
+
+    print("  random five-card    {Poker.rank(Deck.deal(Deck.shuffled(1), 5).hand).name}")
+    print("")
+
+    section("6. Dice")
+    print("  d6                  {Dice.roll(6)}")
+    print("  d20                 {Dice.roll(20)}")
+    let three = Dice.rollMany(3, 6)
+    print("  three d6            {three}  total {Dice.total(three)}")
+    print("")
+
+    section("7. Money is fixed-point and never a float")
+    let stake = Money.of(20, 50)
+    print("  stake               {stake}")
+    print("  stake * 12          {stake * 12}")
+    print("  stake + stake       {stake + stake}")
+
+    let split = Money.divide(stake, 3)
+    print("  stake / 3           {split.quotient}  remainder {split.remainder}")
+    print("  is zero             {Money.isZero(Money.zero())}")
+    print("  note: `stake * 0.5` is a compile error (E0731) by design")
+    print("")
+
+    section("8. Provably fair derivation")
+    let ceremony = Fair.begin("client-seed-demo")
+    print("  commitment          {ceremony.commitment}")
+    Fair.use(ceremony, 0)
+    print("  fair d6 at nonce 0  {Dice.roll(6)}")
+    let revealed = Fair.reveal(ceremony)
+    print("  verified            {Fair.verify(revealed.serverSeed, revealed.commitment)}")
+    print("")
+
+    section("9. RTP tooling")
+    let flat = Rtp.estimate(coinFlip, 200000, 1.0)
+    print("  coin flip RTP       {flat.rtp:.5}   (target 0.97000)")
+    print("  hit rate            {flat.hitRate:.5}")
+    print("  within tolerance    {Rtp.check(flat.rtp, 0.97, 0.01)}")
+    print("")
+
+    print("=========================================")
+    print(" All primitives exercised.")
+    print("=========================================")
+}
+
+# A 97% RTP coin flip: win 1.94x on heads, nothing on tails.
+fn coinFlip() -> Float uses rand {
+    if rng.chance(0.5) {
+        1.94
+    } else {
+        0.0
+    }
+}
+
+fn labels(cards) -> Str {
+    var out = ""
+    for c in cards {
+        out = out + Card.label(c) + " "
+    }
+    out.trim()
+}
+
+fn section(title) uses io {
+    print("--- {title} ---")
+}

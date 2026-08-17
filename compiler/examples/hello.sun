@@ -1,0 +1,25 @@
+# Hello World — the smallest complete Sunra program.
+
+fn main() uses io {
+    let greeting = "Hello, Sunra!"
+    print(greeting)
+
+    # Type annotations are optional; these are all inferred.
+    let year = 2026
+    let rtp = 0.965
+    let live = true
+
+    print("year = {year}")
+    print("rtp  = {rtp}")
+    print("live = {live}")
+
+    # String interpolation supports a format suffix.
+    print("rtp as a percentage: {rtp:.2}")
+
+    # Functions are ordinary values and may be called before they are declared.
+    print(describe("Sunra"))
+}
+
+fn describe(name) -> Str {
+    "{name} is a compiled, provably fair language for interactive gaming."
+}

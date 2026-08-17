@@ -1,0 +1,111 @@
+# Every statement below is REJECTED on purpose.
+# Run:  sunra check examples/errors_demo.sun
+#
+# This file is the prototype's evidence for the whitepaper's central claim: the
+# mistakes that cost real gaming operators real money are compile errors in
+# Sunra, not incidents discovered in production. Each error is annotated with
+# the code the checker emits.
+
+# ---------------------------------------------------------------------------
+# E0615 — undeclared effect.
+#
+# `payout` claims to be a pure function of the drawn row, but it reaches for the
+# random source. Were this allowed, no auditor could ever reason about the
+# paytable in isolation, because the function's result would not be a function
+# of its arguments. Sunra rejects it at the signature.
+# ---------------------------------------------------------------------------
+
+fn payout(row) -> Float {
+    let sneaky = rng.float()      # error[E0615]: `payout` performs `rand`
+    if sneaky < 0.5 {
+        0.0
+    } else {
+        10.0
+    }
+}
+
+# ---------------------------------------------------------------------------
+# E0731 — Money multiplied by Float.
+#
+# The classic rounding-loss bug. Money in Sunra is exact fixed point, and
+# scaling it by a binary float would silently discard fractions of a satang on
+# every transaction. Sunra requires an explicit, exact scaling operation.
+# ---------------------------------------------------------------------------
+
+fn commission(stake: Money) uses io {
+    let cut = stake * 0.05        # error[E0731]: cannot multiply Money by Float
+    print(cut)
+}
+
+# ---------------------------------------------------------------------------
+# E0384 — assignment to an immutable binding.
+#
+# `let` binds; `var` declares a mutable slot. Silent reassignment of a balance
+# is how ledgers drift out of agreement with their audit log.
+# ---------------------------------------------------------------------------
+
+fn rebind() uses io {
+    let balance = 100
+    balance = 250                 # error[E0384]: `balance` is immutable
+    print(balance)
+}
+
+# ---------------------------------------------------------------------------
+# E0425 — unresolved name.
+# ---------------------------------------------------------------------------
+
+fn typo() -> Int {
+    let total = 10
+    totl + 5                      # error[E0425]: cannot find `totl`
+}
+
+# ---------------------------------------------------------------------------
+# E0308 — type mismatch.
+#
+# The declared return type and the actual one disagree.
+# ---------------------------------------------------------------------------
+
+fn wrongReturn() -> Int {
+    "not an integer"              # error[E0308]: expected Int, found Str
+}
+
+# ---------------------------------------------------------------------------
+# E0061 — wrong arity.
+# ---------------------------------------------------------------------------
+
+fn twoArgs(a, b) -> Int {
+    a + b
+}
+
+fn callsBadly() -> Int {
+    twoArgs(1)                    # error[E0061]: expects 2 arguments, 1 supplied
+}
+
+# ---------------------------------------------------------------------------
+# E0803 — a game declares an RTP but has no resolver to verify it against.
+#
+# An operator cannot ship a certified RTP figure that nothing in the code
+# actually produces. Sunra treats the declared number as an obligation and
+# demands the function that discharges it.
+# ---------------------------------------------------------------------------
+
+game UnverifiableGame {
+    rtp = 0.96                    # error[E0803]: no `spin` function to verify
+    bet = 1.0
+
+    reel strip = ["A", "B", "C"]
+}
+
+# ---------------------------------------------------------------------------
+# E0308 — a condition that is not a Bool.
+#
+# Sunra has no truthiness. `if balance` is meaningless when balance is a number:
+# the author must say what they meant.
+# ---------------------------------------------------------------------------
+
+fn truthiness() uses io {
+    let balance = 0
+    if balance {                  # error[E0308]: expected Bool, found Int
+        print("non-zero")
+    }
+}

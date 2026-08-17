@@ -1,0 +1,165 @@
+# Baccarat (punto banco) — cards, shoes and the standard third-card rules.
+# Run:    sunra run examples/baccarat.sun --seed 7
+# Test:   sunra test examples/baccarat.sun
+#
+# The drawing rules live in the pure `Baccarat` standard-library module, so they
+# can be verified exhaustively without running a single hand (see the tests at
+# the bottom of this file).
+
+game BaccaratTable {
+    rtp = 0.9894
+    tolerance = 0.01
+    bet = 1.0
+    decks = 8
+
+    # Deal one complete hand and return [playerLabel, bankerLabel, pTotal, bTotal, winner].
+    fn deal() uses rand {
+        let shoe = Deck.shuffled(decks)
+
+        let opening = Deck.deal(shoe, 4)
+        let dealt = opening.hand
+        var rest = opening.rest
+
+        var player = [dealt[0], dealt[2]]
+        var banker = [dealt[1], dealt[3]]
+
+        var pTotal = Baccarat.total(player)
+        var bTotal = Baccarat.total(banker)
+
+        # A natural (8 or 9) ends the hand immediately, with no draws.
+        let natural = Baccarat.isNatural(pTotal) or Baccarat.isNatural(bTotal)
+        var playerThird = 0 - 1
+
+        if not natural {
+            if Baccarat.playerDraws(pTotal) {
+                let dp = Deck.deal(rest, 1)
+                let card = dp.hand[0]
+                rest = dp.rest
+                player = player + [card]
+                playerThird = Card.pip(card) % 10
+                pTotal = Baccarat.total(player)
+            }
+
+            if Baccarat.bankerDraws(bTotal, playerThird) {
+                let db = Deck.deal(rest, 1)
+                banker = banker + [db.hand[0]]
+                rest = db.rest
+                bTotal = Baccarat.total(banker)
+            }
+        }
+
+        [labelOf(player), labelOf(banker), pTotal, bTotal, Baccarat.winner(pTotal, bTotal)]
+    }
+
+    # Pure: turns a hand into a printable label.
+    fn labelOf(cards) -> Str {
+        var out = ""
+        for c in cards {
+            out = out + Card.label(c) + " "
+        }
+        out.trim()
+    }
+
+    # Resolve a flat Banker bet of one unit and report the gross return.
+    fn spin() -> Float uses rand {
+        let round = deal()
+        Baccarat.payout("Banker", round[4]) * bet
+    }
+}
+
+fn main() uses io, rand {
+    print("Sunra baccarat table — punto banco, {BaccaratTable.decks}-deck shoe")
+    print("")
+
+    print("Eight hands:")
+    for i in 0..8 {
+        let r = BaccaratTable.deal()
+        print("  P[{r[0]}] = {r[2]}   B[{r[1]}] = {r[3]}   ->  {r[4]}")
+    }
+
+    print("")
+    print("Outcome distribution over 20,000 hands, flat Banker bet:")
+
+    var playerWins = 0
+    var bankerWins = 0
+    var ties = 0
+    var returned = 0.0
+    let hands = 20000
+
+    for i in 0..hands {
+        let r = BaccaratTable.deal()
+        let winner = r[4]
+
+        if winner == "Player" {
+            playerWins += 1
+        } elif winner == "Banker" {
+            bankerWins += 1
+        } else {
+            ties += 1
+        }
+
+        returned += Baccarat.payout("Banker", winner) * BaccaratTable.bet
+    }
+
+    let pPct = float(playerWins) / float(hands)
+    let bPct = float(bankerWins) / float(hands)
+    let tPct = float(ties) / float(hands)
+    let rtp = returned / float(hands)
+
+    print("  Player  {pPct:.4}   (theoretical 0.4462)")
+    print("  Banker  {bPct:.4}   (theoretical 0.4586)")
+    print("  Tie     {tPct:.4}   (theoretical 0.0952)")
+    print("")
+    print("  Banker bet RTP  {rtp:.5}   (theoretical 0.98942)")
+}
+
+# ---------------------------------------------------------------------------
+# The rule functions are pure, so they can be asserted directly with no shoe,
+# no randomness, and no game state. `sunra test examples/baccarat.sun`
+# ---------------------------------------------------------------------------
+
+test "player draws on five or less" {
+    assert Baccarat.playerDraws(0) == true, "player draws on 0"
+    assert Baccarat.playerDraws(5) == true, "player draws on 5"
+    assert Baccarat.playerDraws(6) == false, "player stands on 6"
+    assert Baccarat.playerDraws(7) == false, "player stands on 7"
+}
+
+test "banker stands on seven or more" {
+    assert Baccarat.bankerDraws(7, 5) == false, "banker stands on 7"
+    assert Baccarat.bankerDraws(8, 5) == false, "banker stands on 8"
+    assert Baccarat.bankerDraws(9, 5) == false, "banker stands on 9"
+}
+
+test "banker always draws on two or less" {
+    assert Baccarat.bankerDraws(0, 0 - 1) == true, "banker draws on 0"
+    assert Baccarat.bankerDraws(1, 0 - 1) == true, "banker draws on 1"
+    assert Baccarat.bankerDraws(2, 0 - 1) == true, "banker draws on 2"
+}
+
+test "banker rule depends on the player third card" {
+    # On 3 the banker draws against every player third card except 8.
+    assert Baccarat.bankerDraws(3, 8) == false, "banker stands on 3 vs 8"
+    assert Baccarat.bankerDraws(3, 7) == true, "banker draws on 3 vs 7"
+    # On 4 the banker draws only against 2 through 7.
+    assert Baccarat.bankerDraws(4, 1) == false, "banker stands on 4 vs 1"
+    assert Baccarat.bankerDraws(4, 2) == true, "banker draws on 4 vs 2"
+    # On 6 the banker draws only against 6 or 7.
+    assert Baccarat.bankerDraws(6, 5) == false, "banker stands on 6 vs 5"
+    assert Baccarat.bankerDraws(6, 6) == true, "banker draws on 6 vs 6"
+}
+
+test "totals are computed modulo ten" {
+    let hand = [Card.of("9", "S"), Card.of("7", "H")]
+    assert Baccarat.total(hand) == 6, "9 + 7 = 16, so the total is 6"
+
+    let tens = [Card.of("K", "S"), Card.of("Q", "H")]
+    assert Baccarat.total(tens) == 0, "face cards count as zero"
+}
+
+test "payouts follow the standard schedule" {
+    assert Baccarat.payout("Banker", "Banker") == 1.95, "banker pays 1:1 less 5% commission"
+    assert Baccarat.payout("Player", "Player") == 2.0, "player pays 1:1"
+    assert Baccarat.payout("Tie", "Tie") == 9.0, "tie pays 8:1"
+    assert Baccarat.payout("Player", "Banker") == 0.0, "a losing bet returns nothing"
+}
